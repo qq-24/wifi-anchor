@@ -59,7 +59,7 @@ object Env {
             30 -> "frequency"
             40 -> "rare"
             50 -> "restricted"
-            null -> "n/a（反射不可用）"
+            null -> "n/a（getCurrentStandbyBucket 非公开 API，厂商 ROM 屏蔽）"
             else -> m.invoke(pm).toString()
         }
     } catch (t: Throwable) {

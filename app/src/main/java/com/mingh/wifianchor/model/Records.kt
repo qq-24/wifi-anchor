@@ -63,6 +63,8 @@ data class Frame(
     val ageSane: Boolean,
     val source: String,
     val resultsUpdated: Boolean?,
+    /** 帧内最新一条 ScanResult.timestamp（微秒）；两帧此值相同 = 同一份缓存，用于离线去重 */
+    val newestTsUs: Long,
     val aps: List<ApSnap>,
     val conn: ConnSnap?
 ) {
@@ -73,6 +75,7 @@ data class Frame(
         o.put("tboot_us", tBootUs)
         o.put("age_ms", ageMs)
         o.put("age_sane", ageSane)
+        o.put("nts", newestTsUs)
         o.put("sess", sess)
         o.put("seq", seq)
         o.put("from", source)
@@ -125,6 +128,7 @@ object Frames {
             ageSane = newestUs > 0 && ageMs >= -2000 && ageMs < 3_600_000,
             source = source,
             resultsUpdated = resultsUpdated,
+            newestTsUs = newestUs,
             aps = aps,
             conn = conn
         )

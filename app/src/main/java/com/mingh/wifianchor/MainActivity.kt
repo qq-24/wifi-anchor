@@ -382,12 +382,17 @@ private val PRESETS = listOf("宿舍-桌前", "宿舍-床边", "同层厕所", "
 fun SessionPage(ctx: Context) {
     val st by ScanHub.state.collectAsState()
     var name by remember { mutableStateOf(PRESETS[0]) }
-    var frames by remember { mutableStateOf(40) }
-    var interval by remember { mutableStateOf(3) }
+    var note by remember { mutableStateOf("") }
+    var frames by remember { mutableStateOf(36) }
+    var interval by remember { mutableStateOf(5) }
 
     H("录一个点位（跨时间可复现性是这条路的生死判据）")
     Text("在某个位置站住不动，按「开始」让它连拍。同一个点位要在早/午/晚各录一次，隔几天再录一次，我才算得出漂移和阈值。",
         fontSize = 12.sp)
+    Text("实测你这台机器：主动扫描 4 次/2 分钟、不主动扫时缓存约 24 秒才前进一次 —— 所以录制会自己贴着配额挤扫描，" +
+        "$frames 帧 × ${interval}s ≈ ${frames * interval / 60 + 1} 分钟，里面大约只有 ${frames * interval / 30} 次是真刷新，" +
+        "重复帧也照写（用 timestamp 去重交给我离线做），别中途切走。",
+        fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     OutlinedTextField(
         value = name, onValueChange = { name = it }, label = { Text("点位名") },
         singleLine = true, modifier = Modifier.fillMaxWidth()
@@ -397,14 +402,19 @@ fun SessionPage(ctx: Context) {
             OutlinedButton(onClick = { name = p }) { Text(p, fontSize = 11.sp) }
         }
     }
-    Btns("帧数改（现 $frames）" to { frames = if (frames >= 80) 20 else frames + 20 },
-        "间隔改（现 ${interval}s）" to { interval = if (interval >= 8) 2 else interval + 1 })
+    OutlinedTextField(
+        value = note, onValueChange = { note = it },
+        label = { Text("备注：门开/关、你在不在、手机拿在手上还是放桌上") },
+        singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+    )
+    Btns("帧数改（现 $frames）" to { frames = if (frames >= 80) 20 else frames + 12 },
+        "间隔改（现 ${interval}s）" to { interval = if (interval >= 8) 3 else interval + 1 })
     if (st.recording != null) {
         LinearProgressIndicator(Modifier.fillMaxWidth().padding(vertical = 4.dp))
-        Text("正在录制 ${st.recording}：已 ${st.sessionFrames} 帧", fontSize = 12.sp)
+        Text("正在录制 ${st.recording}：已 ${st.sessionFrames} 帧，其中 ${st.sessionDistinct} 次真刷新", fontSize = 12.sp)
         Btns("停止录制" to { ScanHub.stopSession() })
     } else {
-        Btns("开始录制" to { ScanHub.startSession(name, frames, interval * 1000L) })
+        Btns("开始录制" to { ScanHub.startSession(name, frames, interval * 1000L, note) })
     }
     H("点位建议清单（跑完这一趟我就有足够数据算阈值）")
     Mono(

@@ -1,16 +1,30 @@
-# wifi-anchor · 探针版 v0.1-probe
+# wifi-anchor · 探针版 v0.2-probe
 
 室内 Wi-Fi 定位 App 的**第 0 步**。它不做定位，只做一件事：把「这台手机 + 这栋宿舍楼」的
 真实条件量出来，然后我们据此决定正式版走哪条路。
 
 技术方案与判据见 [SPEC.md](SPEC.md)。
 
+## v0.2 相对 v0.1 的变化（由首轮实测驱动）
+
+首轮实测（小米 23127PN0CC / Android 16）已经定案：**手机侧无 `FEATURE_WIFI_RTT`，且 71~76 台可见 AP 里
+0 台宣告 802.11mc(FTM) 响应器** → RTT 通道在本楼关闭，正式版走指纹 + 连接 RSSI 心跳。
+实测还暴露了两个必须改的事实，v0.2 已处理：
+
+1. **采样会话原来只读缓存**，而本机不主动扫描时缓存约 24 秒才前进一次 → 连拍 40 帧里约 5/6 是同一份缓存的重复读。
+   现在按实测的 **4 次/2 分钟**配额节奏主动挤扫描（28 秒一次），并用 `ScanResult.timestamp` 去重，
+   界面上分开显示「已录帧数」和「其中几次是真刷新」。
+2. **同一位置站着不动，可见 AP 数在 50~76 之间跳**（信道轮转）。这条不改代码，但它决定了正式算法必须按
+   每台 AP 的跨帧出现率加权、且用多帧并集判定 —— 记进 SPEC §5.1。
+
+另：新增会话「备注」字段（门开/关、手机在手还是放桌上），两项非公开 API 的读数改为如实标注原因。
+
 ---
 
 ## 一、装
 
-1. 下载 Release 里的 `app-debug.apk`（7.9 MB，debug 签名）。
-   直链：`https://github.com/qq-24/wifi-anchor/releases/download/v0.1-probe/app-debug.apk`
+1. 下载 Release 里的 APK（7.9 MB，debug 签名）。
+   v0.2 直链：`https://github.com/qq-24/wifi-anchor/releases/download/v0.2-probe/wifi-anchor-probe-v0.2.apk`
 2. 手机上打开该文件安装 → 需要允许「安装未知来源应用」。
    - 用系统浏览器或 **Chrome** 下载最稳；微信/QQ 内置浏览器常拦 apk，可「用其他浏览器打开」。
 3. 首次启动会弹两类授权，都要给：

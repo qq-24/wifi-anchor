@@ -46,11 +46,15 @@ object ScanHub {
         val ftmCount: Int = 0,
         val recording: String? = null,
         val sessionFrames: Int = 0,
+        val sessionDistinct: Int = 0,
         val busy: String? = null
     )
 
     private var ctx: Context? = null
     private var wifi: WifiManager? = null
+
+    /** 会话内申请主动扫描的最小间隔：贴着实测的 4 次/2 分钟用，不超发 */
+    private const val SCAN_ASK_GAP_MS = 28_000L
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private val _state = MutableStateFlow(HubState())
@@ -362,25 +366,63 @@ object ScanHub {
 
     // ---------- 会话与落盘 ----------
 
-    fun startSession(name: String, frames: Int, intervalMs: Long) {
+    /**
+     * 会话录制。这里必须主动挤扫描——真机实测（Xiaomi 23127PN0CC / Android 16）前台配额
+     * 就是官方口径的 4 次/2 分钟，而且不主动扫描时缓存 24 秒只前进 1 次：
+     * 光读缓存连拍 40 帧，实际只捞到约 5 次真刷新，等于白录。
+     * 所以按 28 秒一次的节奏贴着配额申请扫描（用满但不超发，省点电），
+     * 用 ScanResult.timestamp 去重，界面上把「帧数」和「真刷新数」分开显示。
+     */
+    fun startSession(name: String, frames: Int, intervalMs: Long, note: String) {
         val c = ctx ?: return
         sessionName = name.ifBlank { "point" }
         sessionSeq = 0
         val f = File(dir(c), "frames-${dayFmt.format(Date())}-$sessionName.jsonl")
         sessionFile = f
-        _state.value = _state.value.copy(recording = sessionName)
-        appendLine(f, Frames.metaLine(c, "session=$sessionName frames=$frames interval=$intervalMs"))
+        _state.value = _state.value.copy(
+            recording = sessionName, sessionFrames = 0, sessionDistinct = 0
+        )
+        appendLine(
+            f, Frames.metaLine(
+                c,
+                "session=$sessionName frames=$frames interval_ms=$intervalMs note=$note"
+            )
+        )
         log("会话开始录制：${f.name}")
         scope.launch {
+            val seenTs = HashSet<Long>()
+            var lastScanAsk = -999_000L
+            var scans = 0
+            var throttled = 0
             var i = 0
             while (i < frames) {
-                snapshot("session", null)
+                val now = SystemClock.elapsedRealtime()
+                if (now - lastScanAsk >= SCAN_ASK_GAP_MS) {
+                    lastScanAsk = now
+                    scans++
+                    val ret = runCatching { wifi?.startScan() == true }.getOrDefault(false)
+                    if (ret) delay(2000) else {
+                        throttled++
+                        log("会话内第 $scans 次 startScan 被限流（配额已用满），这一轮只读缓存")
+                    }
+                }
+                val fr = snapshot("session", null)
                 i++
-                _state.value = _state.value.copy(sessionFrames = i)
+                if (fr != null && fr.newestTsUs > 0) seenTs.add(fr.newestTsUs)
+                _state.value = _state.value.copy(sessionFrames = i, sessionDistinct = seenTs.size)
                 if (i < frames) delay(intervalMs)
             }
-            _state.value = _state.value.copy(recording = null, sessionFrames = 0)
-            log("会话结束：共 $sessionSeq 帧写入 ${sessionFile?.name}")
+            _state.value = _state.value.copy(recording = null)
+            log(
+                "会话结束：$sessionSeq 帧，其中 ${seenTs.size} 次是真刷新" +
+                    "（其余是同一份缓存的重复读），申请扫描 $scans 次、被限流 $throttled 次"
+            )
+            event(
+                "session_done", mapOf(
+                    "name" to sessionName, "frames" to sessionSeq, "distinct" to seenTs.size,
+                    "scans" to scans, "throttled" to throttled, "note" to note
+                )
+            )
             sessionFile = null
         }
     }

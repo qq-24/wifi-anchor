@@ -131,7 +131,7 @@ object Caps {
             val hit = names.filter { bits and it.second != 0 }.map { it.first }
             "0x%08x".format(bits) + if (hit.isEmpty()) "（反射未取到常量名）" else "  " + hit.joinToString(",")
         } catch (t: Throwable) {
-            "反射不可用: ${t.javaClass.simpleName}"
+            "未暴露（${t.javaClass.simpleName}；该 API 非公开，厂商 ROM 普遍屏蔽，不影响结论）"
         }
     }
 
